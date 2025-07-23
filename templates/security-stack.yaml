@@ -1,0 +1,127 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Security configuration for AWS education content - Security Groups, IAM, Key Pairs'
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: 'aws-education'
+    Description: 'Project name for resource naming'
+
+  KeyPairName:
+    Type: String
+    Default: 'aws-education-keypair'
+    Description: 'Name for the EC2 Key Pair'
+
+Resources:
+  # Security Group for AP Server
+  APServerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub '${ProjectName}-ap-server-sg'
+      GroupDescription: 'Security Group for AP Server (Windows + IIS)'
+      VpcId:
+        Fn::ImportValue: !Sub '${ProjectName}-vpc-id'
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+          Description: 'HTTP access'
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-ap-server-sg'
+
+  # Security Group for DB Server
+  DBServerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub '${ProjectName}-db-server-sg'
+      GroupDescription: 'Security Group for DB Server (Linux + MySQL)'
+      VpcId:
+        Fn::ImportValue: !Sub '${ProjectName}-vpc-id'
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          SourceSecurityGroupId: !Ref APServerSecurityGroup
+          Description: 'MySQL access from AP Server'
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-db-server-sg'
+
+  # IAM Role for EC2 instances
+  EC2Role:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-ec2-role'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-ec2-role'
+
+  # Instance Profile for EC2 Role
+  EC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: !Sub '${ProjectName}-ec2-instance-profile'
+      Roles:
+        - !Ref EC2Role
+
+  # Key Pair for EC2 instances
+  MainKeyPair:
+    Type: AWS::EC2::KeyPair
+    Properties:
+      KeyName: !Ref KeyPairName
+      KeyType: rsa
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-keypair'
+
+Outputs:
+  APServerSecurityGroupId:
+    Description: 'Security Group ID for AP Server'
+    Value: !Ref APServerSecurityGroup
+    Export:
+      Name: !Sub '${ProjectName}-ap-server-sg-id'
+
+  DBServerSecurityGroupId:
+    Description: 'Security Group ID for DB Server'
+    Value: !Ref DBServerSecurityGroup
+    Export:
+      Name: !Sub '${ProjectName}-db-server-sg-id'
+
+  EC2InstanceProfileArn:
+    Description: 'EC2 Instance Profile ARN'
+    Value: !GetAtt EC2InstanceProfile.Arn
+    Export:
+      Name: !Sub '${ProjectName}-ec2-instance-profile-arn'
+
+  EC2InstanceProfileName:
+    Description: 'EC2 Instance Profile Name'
+    Value: !Ref EC2InstanceProfile
+    Export:
+      Name: !Sub '${ProjectName}-ec2-instance-profile-name'
+
+  KeyPairName:
+    Description: 'Key Pair Name'
+    Value: !Ref MainKeyPair
+    Export:
+      Name: !Sub '${ProjectName}-keypair-name'
+    Description: 'EC2 Instance Profile Name'
+    Value: !Ref EC2InstanceProfile
+    Export:
+      Name: !Sub '${ProjectName}-ec2-instance-profile-name'
+
+  KeyPairName:
+    Description: 'Key Pair Name'
+    Value: !Ref MainKeyPair
+    Export:
+      Name: !Sub '${ProjectName}-keypair-name'

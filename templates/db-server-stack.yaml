@@ -1,0 +1,142 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Plain Linux Server infrastructure - Amazon Linux 2023'
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: 'aws-education'
+    Description: 'Project name for resource naming'
+
+  InstanceType:
+    Type: String
+    Default: 't3.medium'
+    Description: 'EC2 instance type for Linux server'
+
+  LatestAmazonLinuxAmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: '/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-6.1-x86_64'
+    Description: 'Latest Amazon Linux 2023 AMI ID'
+
+Resources:
+  # Linux Server EC2 Instance
+  LinuxServer:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref LatestAmazonLinuxAmiId
+      InstanceType: !Ref InstanceType
+      KeyName:
+        Fn::ImportValue: !Sub '${ProjectName}-keypair-name'
+      IamInstanceProfile:
+        Fn::ImportValue: !Sub '${ProjectName}-ec2-instance-profile-name'
+      SecurityGroupIds:
+        - Fn::ImportValue: !Sub '${ProjectName}-db-server-sg-id'
+      SubnetId:
+        Fn::ImportValue: !Sub '${ProjectName}-private-subnet-id'
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          # Update system
+          dnf update -y
+          
+          # Install essential packages
+          dnf install -y wget curl
+          
+          # Wait for additional volume to be attached
+          sleep 30
+          
+          # Find and format the 1TB volume
+          DEVICE=$(lsblk -d -o NAME,SIZE | grep "1T\|1024G" | awk '{print "/dev/"$1}' | head -1)
+          if [ ! -z "$DEVICE" ]; then
+              # Create filesystem
+              mkfs.ext4 $DEVICE
+              
+              # Create mount point
+              mkdir -p /data
+              
+              # Mount the volume
+              mount $DEVICE /data
+              
+              # Add to fstab for persistent mounting
+              UUID=$(blkid -s UUID -o value $DEVICE)
+              echo "UUID=$UUID /data ext4 defaults,nofail 0 2" >> /etc/fstab
+              
+              # Set permissions for data directory
+              chmod 755 /data
+          fi
+          
+          # Create status file
+          echo "Linux Server setup completed at $(date)" > /tmp/setup-complete.txt
+          
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-linux-server'
+
+  # EBS Volume for Data (1TB)
+  DataVolume:
+    Type: AWS::EC2::Volume
+    Properties:
+      Size: 1024
+      VolumeType: gp3
+      AvailabilityZone: us-east-1a
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-linux-server-data-volume'
+
+  # Attach Data Volume to Linux Server
+  DataVolumeAttachment:
+    Type: AWS::EC2::VolumeAttachment
+    Properties:
+      InstanceId: !Ref LinuxServer
+      VolumeId: !Ref DataVolume
+      Device: /dev/sdf
+
+Outputs:
+  LinuxServerInstanceId:
+    Description: 'Linux Server Instance ID'
+    Value: !Ref LinuxServer
+    Export:
+      Name: !Sub '${ProjectName}-linux-server-instance-id'
+
+  LinuxServerPrivateIP:
+    Description: 'Linux Server Private IP'
+    Value: !GetAtt LinuxServer.PrivateIp
+    Export:
+      Name: !Sub '${ProjectName}-linux-server-private-ip'
+
+  DataVolumeId:
+    Description: 'Data Volume ID'
+    Value: !Ref DataVolume
+    Export:
+      Name: !Sub '${ProjectName}-data-volume-id'
+      VolumeType: gp3
+      AvailabilityZone: us-east-1a
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-db-server-data-volume'
+
+  # Attach DB Volume to DB Server
+  DBVolumeAttachment:
+    Type: AWS::EC2::VolumeAttachment
+    Properties:
+      InstanceId: !Ref DBServer
+      VolumeId: !Ref DBVolume
+      Device: /dev/sdf
+
+Outputs:
+  DBServerInstanceId:
+    Description: 'DB Server Instance ID'
+    Value: !Ref DBServer
+    Export:
+      Name: !Sub '${ProjectName}-db-server-instance-id'
+
+  DBServerPrivateIP:
+    Description: 'DB Server Private IP'
+    Value: !GetAtt DBServer.PrivateIp
+    Export:
+      Name: !Sub '${ProjectName}-db-server-private-ip'
+
+  DBVolumeId:
+    Description: 'DB Volume ID'
+    Value: !Ref DBVolume
+    Export:
+      Name: !Sub '${ProjectName}-db-volume-id'

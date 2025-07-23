@@ -1,0 +1,143 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'AP Server infrastructure - Windows Server 2022 with IIS'
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: 'aws-education'
+    Description: 'Project name for resource naming'
+
+  InstanceType:
+    Type: String
+    Default: 't3.medium'
+    Description: 'EC2 instance type for AP server'
+
+  LatestWindowsAmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: '/aws/service/ami-windows-latest/Windows_Server-2022-Japanese-Full-Base'
+    Description: 'Latest Windows Server 2022 AMI ID'
+
+Resources:
+  # AP Server EC2 Instance
+  APServer:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref LatestWindowsAmiId
+      InstanceType: !Ref InstanceType
+      KeyName:
+        Fn::ImportValue: !Sub '${ProjectName}-keypair-name'
+      IamInstanceProfile:
+        Fn::ImportValue: !Sub '${ProjectName}-ec2-instance-profile-name'
+      SecurityGroupIds:
+        - Fn::ImportValue: !Sub '${ProjectName}-ap-server-sg-id'
+      SubnetId:
+        Fn::ImportValue: !Sub '${ProjectName}-public-subnet-id'
+      UserData:
+        Fn::Base64: !Sub |
+          <powershell>
+          # Install IIS
+          Enable-WindowsOptionalFeature -Online -FeatureName IIS-WebServerRole, IIS-WebServer, IIS-CommonHttpFeatures, IIS-HttpErrors, IIS-HttpLogging, IIS-RequestMonitor, IIS-StaticContent, IIS-DefaultDocument, IIS-DirectoryBrowsing
+          
+          # Create index.html
+          $indexContent = @"
+          <!DOCTYPE html>
+          <html>
+          <head>
+              <title>AWS Education - AP Server</title>
+              <meta charset="UTF-8">
+          </head>
+          <body>
+              <h1>AWS教育コンテンツ - APサーバー</h1>
+              <p>Windows Server 2022 + IIS</p>
+              <p>サーバー名: $env:COMPUTERNAME</p>
+              <p>起動時刻: $(Get-Date)</p>
+          </body>
+          </html>
+          "@
+          
+          $indexContent | Out-File -FilePath "C:\inetpub\wwwroot\index.html" -Encoding UTF8
+          
+          # Initialize and format D drive (will be attached as additional volume)
+          Start-Sleep -Seconds 30
+          try {
+              Get-Disk | Where-Object {$_.PartitionStyle -eq 'RAW'} | ForEach-Object {
+                  $_ | Initialize-Disk -PartitionStyle MBR -PassThru | New-Partition -UseMaximumSize -DriveLetter D | Format-Volume -FileSystem NTFS -NewFileSystemLabel "Data" -Confirm:$false
+              }
+          } catch {
+              Write-Host "D drive initialization will be handled after volume attachment"
+          }
+          </powershell>
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-ap-server'
+
+  # Additional EBS Volume for C drive (30GB)
+  CVolumeAP:
+    Type: AWS::EC2::Volume
+    Properties:
+      Size: 30
+      VolumeType: gp3
+      AvailabilityZone: us-east-1a
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-ap-server-c-volume'
+
+  # Additional EBS Volume for D drive (50GB)  
+  DVolumeAP:
+    Type: AWS::EC2::Volume
+    Properties:
+      Size: 50
+      VolumeType: gp3
+      AvailabilityZone: us-east-1a
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-ap-server-d-volume'
+
+  # Attach D Volume to AP Server
+  DVolumeAttachmentAP:
+    Type: AWS::EC2::VolumeAttachment
+    Properties:
+      InstanceId: !Ref APServer
+      VolumeId: !Ref DVolumeAP
+      Device: xvdf
+
+  # Elastic IP for AP Server
+  APServerEIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-ap-server-eip'
+
+  # Associate EIP with AP Server
+  APServerEIPAssociation:
+    Type: AWS::EC2::EIPAssociation
+    Properties:
+      InstanceId: !Ref APServer
+      EIP: !Ref APServerEIP
+
+Outputs:
+  APServerInstanceId:
+    Description: 'AP Server Instance ID'
+    Value: !Ref APServer
+    Export:
+      Name: !Sub '${ProjectName}-ap-server-instance-id'
+
+  APServerPrivateIP:
+    Description: 'AP Server Private IP'
+    Value: !GetAtt APServer.PrivateIp
+    Export:
+      Name: !Sub '${ProjectName}-ap-server-private-ip'
+
+  APServerPublicIP:
+    Description: 'AP Server Public IP (EIP)'
+    Value: !Ref APServerEIP
+    Export:
+      Name: !Sub '${ProjectName}-ap-server-public-ip'
+
+  APServerWebURL:
+    Description: 'AP Server Web URL'
+    Value: !Sub 'http://${APServerEIP}'
+    Export:
+      Name: !Sub '${ProjectName}-ap-server-web-url'
