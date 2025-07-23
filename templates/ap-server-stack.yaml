@@ -47,10 +47,10 @@ Resources:
               <meta charset="UTF-8">
           </head>
           <body>
-              <h1>AWS教育コンテンツ - APサーバー</h1>
+              <h1>AWS Education Content - Application Server</h1>
               <p>Windows Server 2022 + IIS</p>
-              <p>サーバー名: $env:COMPUTERNAME</p>
-              <p>起動時刻: $(Get-Date)</p>
+              <p>Server Name: $env:COMPUTERNAME</p>
+              <p>Boot Time: $(Get-Date)</p>
           </body>
           </html>
           "@
@@ -136,8 +136,14 @@ Outputs:
     Export:
       Name: !Sub '${ProjectName}-ap-server-public-ip'
 
+  APServerPublicDNS:
+    Description: 'AP Server Public DNS Name'
+    Value: !GetAtt APServer.PublicDnsName
+    Export:
+      Name: !Sub '${ProjectName}-ap-server-public-dns'
+
   APServerWebURL:
     Description: 'AP Server Web URL'
-    Value: !Sub 'http://${APServerEIP}'
+    Value: !Sub 'http://${APServer.PublicDnsName}'
     Export:
       Name: !Sub '${ProjectName}-ap-server-web-url'

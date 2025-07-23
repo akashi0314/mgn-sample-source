@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'Plain Linux Server infrastructure - Amazon Linux 2023'
+Description: 'DB Server infrastructure - Amazon Linux 2023 with MySQL'
 
 Parameters:
   ProjectName:
@@ -10,7 +10,7 @@ Parameters:
   InstanceType:
     Type: String
     Default: 't3.medium'
-    Description: 'EC2 instance type for Linux server'
+    Description: 'EC2 instance type for DB server'
 
   LatestAmazonLinuxAmiId:
     Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
@@ -18,8 +18,8 @@ Parameters:
     Description: 'Latest Amazon Linux 2023 AMI ID'
 
 Resources:
-  # Linux Server EC2 Instance
-  LinuxServer:
+  # DB Server EC2 Instance
+  DBServer:
     Type: AWS::EC2::Instance
     Properties:
       ImageId: !Ref LatestAmazonLinuxAmiId
@@ -39,7 +39,11 @@ Resources:
           dnf update -y
           
           # Install essential packages
-          dnf install -y wget curl
+          dnf install -y wget curl mysql-server
+          
+          # Start and enable MySQL
+          systemctl start mysqld
+          systemctl enable mysqld
           
           # Wait for additional volume to be attached
           sleep 30
@@ -62,52 +66,21 @@ Resources:
               
               # Set permissions for data directory
               chmod 755 /data
+              chown mysql:mysql /data
           fi
           
           # Create status file
-          echo "Linux Server setup completed at $(date)" > /tmp/setup-complete.txt
+          echo "DB Server setup completed at $(date)" > /tmp/setup-complete.txt
           
       Tags:
         - Key: Name
-          Value: !Sub '${ProjectName}-linux-server'
+          Value: !Sub '${ProjectName}-db-server'
 
   # EBS Volume for Data (1TB)
-  DataVolume:
+  DBVolume:
     Type: AWS::EC2::Volume
     Properties:
       Size: 1024
-      VolumeType: gp3
-      AvailabilityZone: us-east-1a
-      Tags:
-        - Key: Name
-          Value: !Sub '${ProjectName}-linux-server-data-volume'
-
-  # Attach Data Volume to Linux Server
-  DataVolumeAttachment:
-    Type: AWS::EC2::VolumeAttachment
-    Properties:
-      InstanceId: !Ref LinuxServer
-      VolumeId: !Ref DataVolume
-      Device: /dev/sdf
-
-Outputs:
-  LinuxServerInstanceId:
-    Description: 'Linux Server Instance ID'
-    Value: !Ref LinuxServer
-    Export:
-      Name: !Sub '${ProjectName}-linux-server-instance-id'
-
-  LinuxServerPrivateIP:
-    Description: 'Linux Server Private IP'
-    Value: !GetAtt LinuxServer.PrivateIp
-    Export:
-      Name: !Sub '${ProjectName}-linux-server-private-ip'
-
-  DataVolumeId:
-    Description: 'Data Volume ID'
-    Value: !Ref DataVolume
-    Export:
-      Name: !Sub '${ProjectName}-data-volume-id'
       VolumeType: gp3
       AvailabilityZone: us-east-1a
       Tags:
