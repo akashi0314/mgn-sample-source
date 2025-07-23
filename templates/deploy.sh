@@ -11,6 +11,49 @@ echo "Project: $PROJECT_NAME"
 echo "Region: $REGION"
 echo
 
+# Debug: Show current AWS account and user information
+echo "=== AWS Account Debug Information ==="
+echo "Getting current AWS account information..."
+
+# Get AWS account ID
+AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text 2>/dev/null)
+if [ $? -eq 0 ]; then
+    echo "AWS Account ID: $AWS_ACCOUNT_ID"
+else
+    echo "ERROR: Unable to get AWS Account ID. Please check your AWS credentials."
+    exit 1
+fi
+
+# Get current AWS user/role ARN
+AWS_USER_ARN=$(aws sts get-caller-identity --query Arn --output text 2>/dev/null)
+if [ $? -eq 0 ]; then
+    echo "AWS User/Role ARN: $AWS_USER_ARN"
+else
+    echo "WARNING: Unable to get AWS User/Role ARN"
+fi
+
+# Get current AWS region
+CURRENT_REGION=$(aws configure get region 2>/dev/null)
+if [ ! -z "$CURRENT_REGION" ]; then
+    echo "Configured AWS Region: $CURRENT_REGION"
+    if [ "$CURRENT_REGION" != "$REGION" ]; then
+        echo "WARNING: Configured region ($CURRENT_REGION) differs from deployment region ($REGION)"
+    fi
+else
+    echo "No default region configured, using deployment region: $REGION"
+fi
+
+echo "=========================================="
+echo
+
+# Confirmation prompt
+read -p "Do you want to proceed with deployment to Account ID: $AWS_ACCOUNT_ID? (y/N): " -n 1 -r
+echo
+if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+    echo "Deployment cancelled."
+    exit 0
+fi
+
 # Deploy network stack
 echo "1. Deploying network-stack..."
 sam deploy \
