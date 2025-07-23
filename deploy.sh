@@ -54,10 +54,44 @@ if [[ ! $REPLY =~ ^[Yy]$ ]]; then
     exit 0
 fi
 
+# Validate all templates first
+echo "=== Validating SAM Templates ==="
+
+echo "Validating network-stack template..."
+sam validate --template-file templates/network-stack.yaml
+if [ $? -ne 0 ]; then
+    echo "ERROR: network-stack template validation failed"
+    exit 1
+fi
+
+echo "Validating security-stack template..."
+sam validate --template-file templates/security-stack.yaml
+if [ $? -ne 0 ]; then
+    echo "ERROR: security-stack template validation failed"
+    exit 1
+fi
+
+echo "Validating ap-server-stack template..."
+sam validate --template-file templates/ap-server-stack.yaml
+if [ $? -ne 0 ]; then
+    echo "ERROR: ap-server-stack template validation failed"
+    exit 1
+fi
+
+echo "Validating db-server-stack template..."
+sam validate --template-file templates/db-server-stack.yaml
+if [ $? -ne 0 ]; then
+    echo "ERROR: db-server-stack template validation failed"
+    exit 1
+fi
+
+echo "All templates validated successfully!"
+echo
+
 # Deploy network stack
 echo "1. Deploying network-stack..."
 sam deploy \
-    --template-file network-stack.yaml \
+    --template-file templates/network-stack.yaml \
     --stack-name ${PROJECT_NAME}-network-stack \
     --parameter-overrides ProjectName=$PROJECT_NAME \
     --region $REGION \
@@ -68,7 +102,7 @@ sam deploy \
 echo
 echo "2. Deploying security-stack..."
 sam deploy \
-    --template-file security-stack.yaml \
+    --template-file templates/security-stack.yaml \
     --stack-name ${PROJECT_NAME}-security-stack \
     --parameter-overrides ProjectName=$PROJECT_NAME \
     --capabilities CAPABILITY_NAMED_IAM \
@@ -80,7 +114,7 @@ sam deploy \
 echo
 echo "3. Deploying ap-server-stack..."
 sam deploy \
-    --template-file ap-server-stack.yaml \
+    --template-file templates/ap-server-stack.yaml \
     --stack-name ${PROJECT_NAME}-ap-server-stack \
     --parameter-overrides ProjectName=$PROJECT_NAME \
     --region $REGION \
@@ -91,7 +125,7 @@ sam deploy \
 echo
 echo "4. Deploying db-server-stack..."
 sam deploy \
-    --template-file db-server-stack.yaml \
+    --template-file templates/db-server-stack.yaml \
     --stack-name ${PROJECT_NAME}-db-server-stack \
     --parameter-overrides ProjectName=$PROJECT_NAME \
     --region $REGION \
